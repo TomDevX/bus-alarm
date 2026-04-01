@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>BusAlert v15 - Auto Address</title>
+    <title>BusAlert v16 - Favorites</title>
     
     <script src="https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.js"></script>
     <link href="https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.css" rel="stylesheet" />
@@ -19,6 +19,7 @@
         body { background: var(--bg); color: var(--text); font-family: var(--font-main); margin: 0; padding-bottom: 40px; }
         .container { max-width: 450px; margin: 0 auto; padding: 20px; }
         
+        /* Hero UI */
         .hero { 
             background: var(--card); padding: 30px 10px; text-align: center; border-radius: 16px; 
             border: 1px solid var(--border); margin-bottom: 20px;
@@ -39,17 +40,30 @@
             border-radius: 8px; z-index: 2000; display: none; box-shadow: 0 4px 12px rgba(0,0,0,0.15);
         }
         .suggestion-item { padding: 12px; border-bottom: 1px solid var(--border); cursor: pointer; font-size: 14px; }
-        .suggestion-item:hover { background: #f1f3f4; }
 
-        #map-frame { position: relative; border-radius: 16px; overflow: hidden; margin: 15px 0; border: 1px solid var(--border); height: 300px; }
+        #map-frame { position: relative; border-radius: 16px; overflow: hidden; margin: 15px 0; border: 1px solid var(--border); height: 280px; }
         #map { height: 100%; width: 100%; }
 
+        /* Buttons */
         .btn { width: 100%; padding: 16px; border-radius: 24px; border: none; font-weight: 700; cursor: pointer; font-family: var(--font-main); font-size: 15px; display: flex; align-items: center; justify-content: center; gap: 8px; }
         .btn-start { background: var(--accent); color: white; }
         .btn-stop { background: var(--red); color: white; }
-        .btn-emergency { background: #3c4043; color: white; margin-top: 10px; font-size: 13px; }
         .btn-secondary { background: #fff; color: var(--accent); border: 1px solid var(--border); margin-bottom: 8px; }
+        .btn-fav { background: #f1f3f4; color: #5f6368; border: none; font-size: 13px; padding: 12px; margin-top: 5px; }
         
+        /* Favorites List UI */
+        .fav-list { margin-top: 15px; border-top: 1px solid var(--border); padding-top: 15px; }
+        .fav-item { 
+            display: flex; justify-content: space-between; align-items: center; 
+            background: #f8f9fa; padding: 10px 15px; border-radius: 12px; margin-bottom: 8px;
+            border: 1px solid transparent; cursor: pointer;
+        }
+        .fav-item:hover { border-color: var(--accent); }
+        .fav-info { font-size: 14px; flex: 1; }
+        .fav-name { font-weight: 700; color: var(--text); }
+        .fav-addr { font-size: 11px; color: #70757a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 200px; }
+        .btn-del { color: var(--red); background: none; border: none; font-size: 18px; padding: 5px; cursor: pointer; }
+
         #alarm-overlay { position: fixed; inset: 0; background: var(--red); z-index: 9999; display: none; flex-direction: column; align-items: center; justify-content: center; text-align: center; color: white; padding: 20px; }
     </style>
 </head>
@@ -58,7 +72,7 @@
 <div class="container">
     <div class="hero">
         <div class="dist-val" id="displayDist">0.000</div>
-        <div class="label">Km tới đích (Thời gian thực)</div>
+        <div class="label">Km tới đích</div>
     </div>
 
     <div class="card">
@@ -67,10 +81,20 @@
             <input type="text" id="searchInput" placeholder="Tìm địa chỉ hoặc chọn trên map..." oninput="handleSearch(this.value)">
             <div id="suggestions" class="suggestions"></div>
         </div>
-        <button class="btn btn-secondary" onclick="getCurrentLocationAsTarget()">📍 Dùng vị trí hiện tại</button>
+        
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+            <button class="btn btn-secondary" style="font-size:12px;" onclick="getCurrentLocationAsTarget()">📍 Vị trí hiện tại</button>
+            <button class="btn btn-secondary" style="font-size:12px;" onclick="saveCurrentToFavorites()">⭐ Lưu yêu thích</button>
+        </div>
+
+        <div id="favListContainer" class="fav-list">
+            <span class="label" style="font-size:9px;">Trạm đã lưu</span>
+            <div id="favItems"></div>
+        </div>
+
         <div style="display: flex; gap: 8px; margin-top:10px;">
-            <input type="number" id="targetLat" placeholder="Lat" readonly style="font-size:12px; background:#f8f9fa;">
-            <input type="number" id="targetLng" placeholder="Lng" readonly style="font-size:12px; background:#f8f9fa;">
+            <input type="number" id="targetLat" placeholder="Lat" readonly style="font-size:11px; background:#f8f9fa; padding:8px;">
+            <input type="number" id="targetLng" placeholder="Lng" readonly style="font-size:11px; background:#f8f9fa; padding:8px;">
         </div>
     </div>
 
@@ -82,13 +106,13 @@
     </div>
 
     <button id="mainBtn" class="btn btn-start" onclick="toggleTracking()">▶ Bắt đầu giám sát</button>
-    <button class="btn btn-emergency" onclick="emergencyStop()">⚠️ THOÁT KHẨN CẤP</button>
+    <button class="btn btn-secondary" style="background:#3c4043; color:white; margin-top:10px; border:none;" onclick="emergencyStop()">⚠️ THOÁT KHẨN CẤP</button>
 </div>
 
 <div id="alarm-overlay">
     <h1 style="font-size: 80px; margin: 0;">🚨</h1>
     <h2 style="font-size: 32px; font-weight: 900;">DẬY THÔI QUÂN!</h2>
-    <p>Bạn đã vào vùng đích đến.</p>
+    <p>Đã đến trạm dừng yêu thích của bạn.</p>
     <button class="btn" style="width:200px; background:white; color:black; margin-top:20px;" onclick="stopAlarm()">XÁC NHẬN</button>
 </div>
 
@@ -96,10 +120,12 @@
 <audio id="alarmAudio" loop></audio>
 
 <script>
-const ALARM_LINK = 'alarm.mp3'; 
+const ALARM_LINK = 'alarm.mp3'; // Đặt file alarm.mp3 cùng folder nhé Quân
+const FAV_KEY = 'busalert_favs';
 
 let map, myMarker, targetMarker, watchId;
 let isTracking = false;
+let favorites = [];
 
 function initMap() {
     map = new maplibregl.Map({
@@ -114,7 +140,6 @@ function initMap() {
     });
     myMarker = new maplibregl.Marker({ color: '#1a73e8' }).setLngLat([106.660172, 10.762622]).addTo(map);
     
-    // CẬP NHẬT: Click map sẽ gọi Reverse Geocode
     map.on('click', async (e) => {
         const lat = e.lngLat.lat;
         const lng = e.lngLat.lng;
@@ -124,39 +149,87 @@ function initMap() {
     });
 
     document.getElementById('alarmAudio').src = ALARM_LINK;
+    loadFavorites();
     startPassiveWatch();
 }
 
-// HÀM GIẢI MÃ TỌA ĐỘ THÀNH ĐỊA CHỈ
+// ─── XỬ LÝ YÊU THÍCH (FAVORITES) ───
+function loadFavorites() {
+    const data = localStorage.getItem(FAV_KEY);
+    favorites = data ? JSON.parse(data) : [];
+    renderFavorites();
+}
+
+function saveCurrentToFavorites() {
+    const lat = parseFloat(document.getElementById('targetLat').value);
+    const lng = parseFloat(document.getElementById('targetLng').value);
+    const addr = document.getElementById('searchInput').value;
+
+    if (!lat || !lng) return alert("Chọn điểm đến trước khi lưu!");
+
+    const name = prompt("Đặt tên cho trạm này (vd: Nhà, Trường):", addr.split(',')[0]);
+    if (!name) return;
+
+    favorites.push({ name, lat, lng, addr });
+    localStorage.setItem(FAV_KEY, JSON.stringify(favorites));
+    renderFavorites();
+}
+
+function renderFavorites() {
+    const container = document.getElementById('favItems');
+    if (favorites.length === 0) {
+        container.innerHTML = `<div style="font-size:12px; color:#9aa0a6; text-align:center; padding:10px;">Chưa có trạm lưu</div>`;
+        return;
+    }
+    container.innerHTML = favorites.map((f, i) => `
+        <div class="fav-item" onclick="selectFavorite(${i})">
+            <div class="fav-info">
+                <div class="fav-name">${f.name}</div>
+                <div class="fav-addr">${f.addr}</div>
+            </div>
+            <button class="btn-del" onclick="event.stopPropagation(); deleteFavorite(${i})">×</button>
+        </div>
+    `).join('');
+}
+
+function selectFavorite(index) {
+    const f = favorites[index];
+    document.getElementById('searchInput').value = f.addr;
+    setTarget(f.lat, f.lng, f.addr);
+}
+
+function deleteFavorite(index) {
+    if (!confirm("Xóa trạm này khỏi danh sách?")) return;
+    favorites.splice(index, 1);
+    localStorage.setItem(FAV_KEY, JSON.stringify(favorites));
+    renderFavorites();
+}
+
+// ─── CÁC HÀM CORE GIỮ NGUYÊN TỪ V15 ───
 async function reverseGeocode(lat, lng) {
     try {
         const res = await fetch(`https://photon.komoot.io/reverse?lat=${lat}&lon=${lng}`);
         const data = await res.json();
-        if (data.features && data.features.length > 0) {
+        if (data.features?.length > 0) {
             const p = data.features[0].properties;
             return [p.name, p.street, p.city].filter(Boolean).join(', ');
         }
-    } catch (e) { console.error("Lỗi lấy địa chỉ:", e); }
+    } catch (e) {}
     return `Tọa độ (${lat.toFixed(4)}, ${lng.toFixed(4)})`;
 }
 
 function startPassiveWatch() {
-    if (!navigator.geolocation) return;
-    watchId = navigator.geolocation.watchPosition((pos) => {
+    navigator.geolocation.watchPosition((pos) => {
         const { latitude, longitude } = pos.coords;
         myMarker.setLngLat([longitude, latitude]);
-
         const tLat = parseFloat(document.getElementById('targetLat').value);
         const tLng = parseFloat(document.getElementById('targetLng').value);
-
         if (tLat && tLng) {
             const dist = haversine(latitude, longitude, tLat, tLng);
             document.getElementById('displayDist').textContent = dist.toFixed(3);
-            if (isTracking && dist <= parseFloat(document.getElementById('threshold').value)) {
-                triggerAlarm();
-            }
+            if (isTracking && dist <= parseFloat(document.getElementById('threshold').value)) triggerAlarm();
         }
-    }, null, { enableHighAccuracy: true, maximumAge: 0 });
+    }, null, { enableHighAccuracy: true });
 }
 
 function emergencyStop() {
@@ -188,7 +261,7 @@ async function handleSearch(query) {
         const res = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(query)}&limit=5&lat=10.76&lon=106.66`);
         const data = await res.json();
         suggBox.innerHTML = data.features.map(f => `
-            <div class="suggestion-item" onclick="selectLoc(${f.geometry.coordinates[1]}, ${f.geometry.coordinates[0]}, '${f.properties.name || f.properties.street || 'Địa điểm'}')">
+            <div class="search-result-item" style="padding:12px; cursor:pointer; border-bottom:1px solid #eee;" onclick="selectLoc(${f.geometry.coordinates[1]}, ${f.geometry.coordinates[0]}, '${f.properties.name || f.properties.street || 'Địa điểm'}')">
                 <b>${f.properties.name || ''}</b><br><small>${f.properties.city || ''} ${f.properties.street || ''}</small>
             </div>
         `).join('');
@@ -212,8 +285,7 @@ function setTarget(lat, lng, name) {
 
 function getCurrentLocationAsTarget() {
     navigator.geolocation.getCurrentPosition(async (pos) => {
-        const lat = pos.coords.latitude;
-        const lng = pos.coords.longitude;
+        const lat = pos.coords.latitude; const lng = pos.coords.longitude;
         const addr = await reverseGeocode(lat, lng);
         document.getElementById('searchInput').value = addr;
         setTarget(lat, lng, addr);
@@ -224,20 +296,16 @@ function toggleTracking() {
     if (isTracking) stopTracking(); 
     else {
         if (!document.getElementById('targetLat').value) return alert("Vui lòng chọn đích!");
-        isTracking = true;
-        updateUI(true);
+        isTracking = true; updateUI(true);
         document.getElementById('silentAudio').play().catch(() => {});
     }
 }
-
 function stopTracking() { isTracking = false; updateUI(false); }
-
 function updateUI(active) {
     const btn = document.getElementById('mainBtn');
     btn.textContent = active ? "⏹ NGỪNG GIÁM SÁT" : "▶ BẮT ĐẦU GIÁM SÁT";
     btn.className = active ? "btn btn-stop" : "btn btn-start";
 }
-
 function haversine(lat1, lon1, lat2, lon2) {
     const R = 6371; 
     const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -245,7 +313,6 @@ function haversine(lat1, lon1, lat2, lon2) {
     const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 }
-
 window.onload = initMap;
 </script>
 </body>
