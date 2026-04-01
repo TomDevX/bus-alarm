@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>BusAlert v11 - Stable Audio</title>
+    
+    <script src="https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.js"></script>
+    <link href="https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.css" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@700;800&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --bg: #020617; --card: rgba(15, 23, 42, 0.8); --accent: #10b981; 
+            --text: #f8fafc; --red: #ef4444; --border: rgba(255, 255, 255, 0.1);
+        }
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        body { 
+            background: var(--bg); color: var(--text); font-family: 'Syne', sans-serif; 
+            margin: 0; padding-bottom: 40px; overflow-x: hidden;
+            background-image: radial-gradient(circle at 50% 0%, #1e293b 0%, #020617 100%);
+        }
+        .container { max-width: 450px; margin: 0 auto; padding: 20px; }
+        
+        .hero { 
+            background: var(--card); backdrop-filter: blur(12px);
+            padding: 30px 10px; text-align: center; border-radius: 28px; 
+            border: 1px solid var(--border); margin-bottom: 20px;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.5);
+        }
+        .dist-val { 
+            font-family: 'Space Mono'; font-size: 68px; color: var(--accent); 
+            text-shadow: 0 0 20px rgba(16, 185, 129, 0.4); font-weight: 700;
+        }
+
+        .card { 
+            background: var(--card); backdrop-filter: blur(8px);
+            padding: 20px; border-radius: 24px; border: 1px solid var(--border); margin-bottom: 16px; 
+        }
+        .label { font-size: 10px; color: #94a3b8; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 12px; display: block; }
+        
+        input {
+            width: 100%; background: rgba(0,0,0,0.4); border: 1px solid var(--border); 
+            color: white; padding: 14px; border-radius: 12px; font-family: 'Syne';
+            font-size: 15px; outline: none; margin-bottom: 10px;
+        }
+        
+        .suggestions {
+            position: absolute; top: 60px; left: 0; right: 0; 
+            background: #0f172a; border: 1px solid var(--border);
+            border-radius: 12px; z-index: 2000; display: none;
+            max-height: 220px; overflow-y: auto;
+        }
+        .suggestion-item { padding: 12px; border-bottom: 1px solid var(--border); cursor: pointer; font-size: 13px; }
+        .suggestion-item:hover { background: var(--accent); color: #000; }
+
+        #map-frame { position: relative; border-radius: 24px; overflow: hidden; margin: 15px 0; border: 1px solid var(--border); height: 320px; }
+        #map { height: 100%; width: 100%; }
+
+        .btn { 
+            width: 100%; padding: 18px; border-radius: 14px; border: none; 
+            font-weight: 800; cursor: pointer; font-family: 'Syne'; 
+            font-size: 15px; text-transform: uppercase; display: flex; align-items: center; justify-content: center; gap: 8px;
+        }
+        .btn-start { background: var(--accent); color: #000; margin-top: 10px; }
+        .btn-stop { background: var(--red); color: white; }
+        .btn-secondary { background: rgba(255,255,255,0.05); color: white; border: 1px solid var(--border); font-size: 11px; padding: 10px; margin-bottom: 5px; }
+        .btn:active { transform: scale(0.97); }
+        
+        #alarm-overlay { 
+            position: fixed; inset: 0; background: var(--red); z-index: 9999; 
+            display: none; flex-direction: column; align-items: center; justify-content: center; 
+            text-align: center; color: white; padding: 20px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="hero">
+        <div class="dist-val" id="displayDist">--.-</div>
+        <div class="label">Km tới đích</div>
+    </div>
+
+    <div class="card">
+        <span class="label">🎯 Điểm đến</span>
+        <div style="position:relative;">
+            <input type="text" id="searchInput" placeholder="Tìm địa chỉ..." oninput="handleSearch(this.value)">
+            <div id="suggestions" class="suggestions"></div>
+        </div>
+        <button class="btn btn-secondary" onclick="getCurrentLocationAsTarget()">📍 Dùng vị trí hiện tại làm đích</button>
+        <button class="btn btn-secondary" onclick="testAlarm()">🔊 Test chuông báo thức</button>
+        <div style="display: flex; gap: 8px; margin-top:10px;">
+            <input type="number" id="targetLat" placeholder="Lat" readonly>
+            <input type="number" id="targetLng" placeholder="Lng" readonly>
+        </div>
+    </div>
+
+    <div id="map-frame"><div id="map"></div></div>
+
+    <div class="card">
+        <span class="label">🔔 Bán kính báo động (km)</span>
+        <input type="number" id="threshold" value="0.5" step="0.1" style="text-align:center; color:var(--accent); font-weight:800;">
+    </div>
+
+    <button id="mainBtn" class="btn btn-start" onclick="toggleTracking()">▶ Bắt đầu giám sát</button>
+</div>
+
+<div id="alarm-overlay">
+    <h1 style="font-size: 60px; margin: 0;">🚨</h1>
+    <h2 style="font-size: 32px; font-weight: 800;">DẬY THÔI QUÂN!</h2>
+    <p>Đã đến trạm bus rồi.</p>
+    <button class="btn" style="width:200px; background:white; color:black; margin-top:20px;" onclick="stopAlarm()">XÁC NHẬN</button>
+</div>
+
+<audio id="silentAudio" loop><source src="https://raw.githubusercontent.com/anars/blank-audio/master/10-seconds-of-silence.mp3"></audio>
+
+<script>
+let map, myMarker, targetMarker, watchId;
+let isTracking = false;
+let audioCtx = null;
+let alarmInterval = null;
+
+// 1. Khởi tạo Web Audio Context để tự tạo tiếng Beep
+function initAudio() {
+    if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+}
+
+function playBeep() {
+    initAudio();
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    
+    osc.type = 'square'; // Tiếng còi báo động gắt
+    osc.frequency.setValueAtTime(880, audioCtx.currentTime); // Nốt La (A5)
+    
+    gain.gain.setValueAtTime(0.5, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
+    
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    
+    osc.start();
+    osc.stop(audioCtx.currentTime + 0.5);
+}
+
+function startAlarmSound() {
+    playBeep();
+    alarmInterval = setInterval(playBeep, 1000);
+}
+
+function testAlarm() {
+    initAudio();
+    playBeep();
+    alert("Nếu Quân nghe thấy tiếng 'Bíp', nghĩa là âm thanh đã sẵn sàng!");
+}
+
+// 2. Khởi tạo Map
+function initMap() {
+    map = new maplibregl.Map({
+        container: 'map',
+        style: {
+            version: 8,
+            sources: { 'osm': { type: 'raster', tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'], tileSize: 256 } },
+            layers: [{ id: 'osm', type: 'raster', source: 'osm' }]
+        },
+        center: [106.660172, 10.762622],
+        zoom: 13
+    });
+    myMarker = new maplibregl.Marker({ color: '#10b981' }).setLngLat([106.660172, 10.762622]).addTo(map);
+    map.on('click', (e) => setTarget(e.lngLat.lat, e.lngLat.lng, "Điểm chọn trên bản đồ"));
+}
+
+// 3. Search & Location
+async function handleSearch(query) {
+    const suggBox = document.getElementById('suggestions');
+    if (query.length < 3) { suggBox.style.display = 'none'; return; }
+    try {
+        const res = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(query)}&limit=5&lat=10.76&lon=106.66`);
+        const data = await res.json();
+        suggBox.innerHTML = data.features.map(f => `
+            <div class="suggestion-item" onclick="selectLoc(${f.geometry.coordinates[1]}, ${f.geometry.coordinates[0]}, '${f.properties.name || f.properties.street || 'Địa điểm'}')">
+                <b>${f.properties.name || ''}</b><br><small>${f.properties.city || ''} ${f.properties.street || ''}</small>
+            </div>
+        `).join('');
+        suggBox.style.display = 'block';
+    } catch (e) {}
+}
+
+function selectLoc(lat, lng, name) {
+    document.getElementById('suggestions').style.display = 'none';
+    document.getElementById('searchInput').value = name;
+    setTarget(lat, lng, name);
+}
+
+function setTarget(lat, lng, name) {
+    document.getElementById('targetLat').value = lat.toFixed(6);
+    document.getElementById('targetLng').value = lng.toFixed(6);
+    if (targetMarker) targetMarker.remove();
+    targetMarker = new maplibregl.Marker({ color: '#ef4444' }).setLngLat([lng, lat]).addTo(map);
+    map.flyTo({ center: [lng, lat], zoom: 15 });
+}
+
+function getCurrentLocationAsTarget() {
+    initAudio(); // Mượn tương tác để unlock audio
+    navigator.geolocation.getCurrentPosition((pos) => {
+        setTarget(pos.coords.latitude, pos.coords.longitude, "Vị trí của bạn");
+    }, null, { enableHighAccuracy: true });
+}
+
+// 4. Tracking
+function toggleTracking() { 
+    initAudio(); // Unlock audio context khi click nút start
+    isTracking ? stopTracking() : startTracking(); 
+}
+
+async function startTracking() {
+    const tLat = parseFloat(document.getElementById('targetLat').value);
+    const tLng = parseFloat(document.getElementById('targetLng').value);
+    if (!tLat || !tLng) return alert("Chọn đích trước Quân ơi!");
+
+    isTracking = true;
+    updateUI(true);
+    document.getElementById('silentAudio').play().catch(() => {});
+    if ('wakeLock' in navigator) try { await navigator.wakeLock.request('screen'); } catch (e) {}
+
+    watchId = navigator.geolocation.watchPosition((pos) => {
+        const { latitude, longitude } = pos.coords;
+        myMarker.setLngLat([longitude, latitude]);
+        const dist = haversine(latitude, longitude, tLat, tLng);
+        document.getElementById('displayDist').textContent = dist.toFixed(2);
+        if (dist <= parseFloat(document.getElementById('threshold').value)) triggerAlarm();
+    }, null, { enableHighAccuracy: true, maximumAge: 0 });
+}
+
+function stopTracking() {
+    isTracking = false;
+    navigator.geolocation.clearWatch(watchId);
+    document.getElementById('silentAudio').pause();
+    updateUI(false);
+}
+
+function updateUI(active) {
+    const btn = document.getElementById('mainBtn');
+    btn.innerHTML = active ? "<span>⏹ NGỪNG GIÁM SÁT</span>" : "<span>▶ BẮT ĐẦU GIÁM SÁT</span>";
+    btn.className = active ? "btn btn-stop" : "btn btn-start";
+}
+
+function triggerAlarm() {
+    document.getElementById('alarm-overlay').style.display = 'flex';
+    startAlarmSound();
+    if (navigator.vibrate) navigator.vibrate([1000, 500, 1000]);
+}
+
+function stopAlarm() {
+    document.getElementById('alarm-overlay').style.display = 'none';
+    clearInterval(alarmInterval);
+    stopTracking();
+}
+
+function haversine(lat1, lon1, lat2, lon2) {
+    const R = 6371; 
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+window.onload = initMap;
+</script>
+</body>
+</html>
